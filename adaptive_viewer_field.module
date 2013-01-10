@@ -1,0 +1,145 @@
+<?php
+
+/**
+ * @file
+* A field formatter for the File field, which renders the file as
+* an embedded document, using Zoho's Viewer, Google's Google Docs embeddable file viewer,
+* or HTML depending on the file extension.
+* At the current time this viewer will reasonably display files of these
+* types: txt, pdf, mp3, ppt, pptx, docx, odt, xlsx, xls, rtf,
+* doc, wav, jpg, png
+*
+* The field may be resized and/or otherwise modified using the css selector
+* ".adaptive-viewer-field"
+*/
+
+/**
+ * Implements hook_help().
+*
+* Describe the purpose and usage  of this module.
+*/
+function adaptive_viewer_field_help($path, $arg) {
+	$helptext = '';
+	if ($path == 'admin/help#adaptive_viewer_field') {
+		$helptext = '<p>';
+		$helptext .= t('This module provides a new format for the File field type.' .
+				' This format presents the file as a fully rendered object within a web page -' .
+				' i.e. it displays the contents of the file as appropriate to its filetype' .
+				' (txt, pdf, mp3, ppt, pptx, docx, odt, xlsx, xls, rtf,'.
+				' doc, wav, jpg, gif, png, pps, ods, odp, sxw, sxc, sxi, wpd, csv, tsv),' .
+				' using the Zoho or Google embedded rendering engine, as well as HTML for'.
+				' multimedia formats.</p>' .
+				'<p>N.B.: Only files that are public may use this formatter -' .
+				' Zoho/Google Docs must be able to access the file in order to ' .
+				' render and display it. In other words, it won\'t work on' .
+				' a typical development laptop, or if your server is behind' .
+				' a firewall where Zoho/Google is unable to access it.');
+		$helptext .= '</p>';
+		$helptext .= '<p>';
+		$helptext .= t('To use this field format, add a File field to a new or existing content type (such as Basic Page) on the content type\'s Manage Fields form.' .
+				' The File field type provides only one widget type - File - so select that. On the content type\'s "Manage Display" form,' .
+				' there will be a drop-down select list of available display formats for the File field. To display the file within the Adaptive' .
+				' viewer, choose the \'Adaptive Document Viewer\' format.');
+		$helptext .= '</p>';
+		$helptext .= '<p>';
+		$helptext .= t('The document viewer may be styled using the CSS selector \'.adaptive-viewer-field\'. By default, the viewer\'s width is 100% and its height is 400px, with a 1px black border.');
+		$helptext .= '</p>';
+	}
+	return $helptext;
+}
+
+/**
+ * Implements hook_field_formatter_info_alter().
+ *
+ * Add a new formatter to the
+ * list of formatters available for the File field type.
+ */
+function adaptive_viewer_field_field_formatter_info_alter(&$info) {
+	$new_formatter = array(
+			'label' => t('Adaptive viewer'),
+			'field types' => array(0 => 'file'),
+			'settings' => array(),
+			'module' => 'adaptive_viewer_field',
+	);
+	$info['adaptive_viewer_field_embedded_doc'] = $new_formatter;
+}
+
+/**
+ * Implements hook_field_formatter_view().
+ *
+ * Renders the ouput of an
+ * 'Adaptive viewer' formatted field within an iframe that
+ * pulls in the Adaptive viewer to display the file inline.
+ *
+ */
+function adaptive_viewer_field_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
+	$element = array();
+	switch ($display['type']) {
+		// This formatter outputs the field within an iframe.
+		case 'adaptive_viewer_field_embedded_doc':
+			foreach ($items as $delta => $item) {
+				$item_uri = $item['uri'];
+				if (file_uri_scheme($item_uri) == 'public') {
+					$url = file_create_url($item_uri);
+					$encoded_url = urlencode($url);
+					drupal_add_css(drupal_get_path('module', 'adaptive_viewer_field') . '/adaptive_viewer_field.css');
+					
+					/**
+					 * Use different embedding services depending on type of document.
+					 * Supported File Formats:
+					 * txt, pdf, mp3, ppt, pptx, docx, odt, xlsx, xls, rtf,
+					 * doc, wav, jpg, png, gif
+					*/
+					
+					// PDF, DOC, PPT, XLS files are displayed with Google Docs
+				   
+					if (strpos($item_uri,'docx')!==false || strpos($item_uri,'DOCX') !== false||
+							strpos($item_uri,'pptx')!==false || strpos($item_uri,'PPTX') !== false ||
+							strpos($item_uri,'xlsx')!==false || strpos($item_uri,'XLSX') !== false ||
+							strpos($item_uri,'txt')!==false || strpos($item_uri,'TXT')   !== false ||
+							strpos($item_uri,'rtf')!==false || strpos($item_uri,'RTF')   !== false){
+						
+						
+							$element[$delta]['#markup'] = '<iframe class="adaptive-viewer-field" width="100%" height="400" src="http://viewer.zoho.com/api/urlview.do?url=' . $encoded_url . '"></iframe>';
+						
+							
+					}
+					
+				    else if(strpos($item_uri,'pdf') !== false || strpos($item_uri,'PDF') !== false||
+				    		 		strpos($item_uri,'doc') !== false || strpos($item_uri,'DOC') !== false ||
+				    		 		strpos($item_uri,'ppt') !== false || strpos($item_uri,'PPT') !== false ||
+				    		 		strpos($item_uri,'xls') !== false || strpos($item_uri,'XLS') !== false){
+				    		
+				    		$element[$delta]['#markup'] = '<iframe class="adaptive-viewer-field" width="100%" height="400" src="http://docs.google.com/gview?embedded=true&url=' . $encoded_url . '"></iframe>';
+				    		 
+				    	}
+		    
+				    // Photos are embedded as iframes (could use img tag but gets distorted)
+					else if(strpos($item_uri,'jpg') !== false || strpos($item_uri,'JPG') !== false||
+											strpos($item_uri,'png') !== false||strpos($item_uri,'PNG') !== false||
+											strpos($item_uri,'gif') !== false ||strpos($item_uri,'GIF') !== false) {
+						$element[$delta]['#markup'] = '<iframe class="adaptive-viewer-field" width="100%" height="400" src="' . $url . '"></iframe>';
+						
+				    }
+				    // Audio files are embedded (only works in HTML5)
+				    else if(strpos($item_uri,'wav') !== false || strpos($item_uri,'WAV') !== false||
+											strpos($item_uri,'mp3') !== false ||strpos($item_uri,'MP3') !== false){
+				    	$element[$delta]['#markup'] = '<audio controls="controls"> <source src="' . $url . '"/>The audio player requires an HTML5 compatible browser.</audio>';
+				    	
+				    }
+				    
+				    // All other file types are displayed as regular iframes
+					else{
+						
+						$element[$delta]['#markup'] = '<iframe class="adaptive-viewer-field" height="400" width="100%" src="' . $url . '"></iframe>';
+					}
+					
+				}
+				else {
+					drupal_set_message(t('The file (%file) is not publicly accessable. It must be publicly available in order for the Adaptive viewer to be able to access it.', array('%file' => $item['filename'])), 'error', FALSE);
+				}
+			}
+			break;
+	}
+	return $element;
+}
